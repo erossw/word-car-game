@@ -53,7 +53,7 @@ function getStageConfig(stageNumber) {
     stage,
     gradeLevel: getStageGrade(stage),
     scrollSpeed: Math.min(440, 190 + (stage - 1) * 12),
-    obstacleInterval: Math.max(1200, 3100 - (stage - 1) * 105),
+    obstacleInterval: Math.max(600, 1000 - (stage - 1) * 20),
     targetDistance: Math.min(4200, 1900 + (stage - 1) * 90 + endlessLevel * 25),
     bgTheme: getStageTheme(stage),
   };

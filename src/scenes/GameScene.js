@@ -20,6 +20,8 @@ class GameScene extends Phaser.Scene {
     this.distanceRemainder = 0;
     this.isQuizOpen = false;
     this.isTransitioning = false;
+    this.quizPassed = false;
+    this.quizElapsed = 0;
     this.groundY = 330;
     this.wordData = window.wordManager.getWord(this.stageConfig.gradeLevel);
 
@@ -49,6 +51,7 @@ class GameScene extends Phaser.Scene {
 
     this.createHud();
     this.bindInput();
+    this.createTouchControls();
     this.showStageBanner();
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       window.quizController.hide();
@@ -88,6 +91,7 @@ class GameScene extends Phaser.Scene {
   createGround() {
     this.ground = this.add.rectangle(400, 348, 800, 36, 0x000000, 0);
     this.physics.add.existing(this.ground, true);
+    this.ground.body.updateFromGameObject();
   }
 
   createHud() {
@@ -114,12 +118,52 @@ class GameScene extends Phaser.Scene {
   }
 
   bindInput() {
-    this.jumpKeys = this.input.keyboard.addKeys({
+    const touchControlsRightEdge = 155;
+    this.keys = this.input.keyboard.addKeys({
       space: Phaser.Input.Keyboard.KeyCodes.SPACE,
       up: Phaser.Input.Keyboard.KeyCodes.UP,
+      left: Phaser.Input.Keyboard.KeyCodes.LEFT,
+      right: Phaser.Input.Keyboard.KeyCodes.RIGHT,
+      a: Phaser.Input.Keyboard.KeyCodes.A,
+      d: Phaser.Input.Keyboard.KeyCodes.D,
     });
+    this.touchMoveDirection = 0;
     this.input.on("pointerdown", pointer => {
-      if (!this.isQuizOpen && pointer.y > 70) this.car.jump();
+      if (!this.isQuizOpen && pointer.y > 70 && pointer.x > touchControlsRightEdge) {
+        this.car.jump();
+      }
+    });
+  }
+
+  createTouchControls() {
+    const createControl = (x, label, direction) => {
+      const control = this.add.circle(x, 280, 28, 0x172033, 0.65)
+        .setStrokeStyle(2, 0xffffff, 0.8)
+        .setDepth(25)
+        .setScrollFactor(0)
+        .setInteractive();
+      this.add.text(x, 280, label, {
+        fontFamily: "Arial, sans-serif",
+        fontSize: "25px",
+        fontStyle: "bold",
+        color: "#ffffff",
+      }).setOrigin(0.5).setDepth(26);
+
+      control.on("pointerdown", () => {
+        this.touchMoveDirection = direction;
+      });
+      control.on("pointerup", () => {
+        if (this.touchMoveDirection === direction) this.touchMoveDirection = 0;
+      });
+      control.on("pointerout", () => {
+        if (this.touchMoveDirection === direction) this.touchMoveDirection = 0;
+      });
+    };
+
+    createControl(50, "◀", -1);
+    createControl(120, "▶", 1);
+    this.input.on("pointerup", () => {
+      this.touchMoveDirection = 0;
     });
   }
 
@@ -147,10 +191,17 @@ class GameScene extends Phaser.Scene {
   update(_time, delta) {
     if (this.isQuizOpen || this.isTransitioning) return;
 
-    if (Phaser.Input.Keyboard.JustDown(this.jumpKeys.space)
-      || Phaser.Input.Keyboard.JustDown(this.jumpKeys.up)) {
+    if (Phaser.Input.Keyboard.JustDown(this.keys.space)
+      || Phaser.Input.Keyboard.JustDown(this.keys.up)) {
       this.car.jump();
     }
+
+    const moveDirection = this.keys.left.isDown || this.keys.a.isDown
+      ? -1
+      : this.keys.right.isDown || this.keys.d.isDown
+        ? 1
+        : this.touchMoveDirection;
+    this.car.move(moveDirection);
 
     const distanceDelta = this.stageConfig.scrollSpeed * delta / 1000;
     this.distance += distanceDelta;
@@ -166,18 +217,20 @@ class GameScene extends Phaser.Scene {
       if (stripe.x < -50) stripe.x += 980;
     });
 
-    const itemApproaching = this.wordItem.spawned && !this.wordItem.collected;
     this.obstacles.update(
       delta,
       this.stageConfig.scrollSpeed,
       this.stageConfig.obstacleInterval,
-      !itemApproaching,
+      true,
     );
-    this.wordItem.update(delta, this.stageConfig.scrollSpeed);
+    this.wordItem.update(this.stageConfig.scrollSpeed);
 
     if (!this.wordItem.spawned
-      && this.distance >= this.stageConfig.targetDistance) {
-      this.wordItem.spawn();
+      && this.distance >= this.stageConfig.targetDistance * 0.45) {
+      this.wordItem.spawn(this.stageConfig.scrollSpeed);
+    }
+    if (this.quizPassed && this.distance >= this.stageConfig.targetDistance) {
+      this.completeStage();
     }
     this.updateHud();
   }
@@ -196,6 +249,8 @@ class GameScene extends Phaser.Scene {
     if (this.isQuizOpen || this.isTransitioning || !this.wordItem.collect()) return;
 
     this.isQuizOpen = true;
+    this.touchMoveDirection = 0;
+    this.car.move(0);
     this.physics.pause();
     const distractors = window.wordManager.getDistractors(
       this.wordData,
@@ -210,16 +265,38 @@ class GameScene extends Phaser.Scene {
   handleCorrectAnswer(elapsed) {
     this.physics.resume();
     this.isQuizOpen = false;
-    this.isTransitioning = true;
     this.session.combo += 1;
+    this.quizPassed = true;
+    this.quizElapsed = elapsed;
+    this.updateHud();
 
+    if (this.distance >= this.stageConfig.targetDistance) {
+      this.completeStage();
+      return;
+    }
+
+    const message = this.add.text(400, 165, "정답!\n목표 지점까지 달리세요", {
+      fontFamily: "Arial, sans-serif",
+      fontSize: "28px",
+      fontStyle: "bold",
+      color: "#fef08a",
+      align: "center",
+      stroke: "#172033",
+      strokeThickness: 7,
+    }).setOrigin(0.5).setDepth(30);
+    this.time.delayedCall(900, () => message.destroy());
+  }
+
+  completeStage() {
+    if (this.isTransitioning) return;
+    this.isTransitioning = true;
     const multiplier = this.session.combo >= 3 ? 2 : this.session.combo === 2 ? 1.5 : 1;
     this.session.score += Math.round(150 * multiplier);
-    if (elapsed <= 5000) this.session.score += 50;
+    if (this.quizElapsed <= 5000) this.session.score += 50;
     this.updateHud();
 
     const message = this.add.text(400, 165,
-      `정답!  STAGE CLEAR\n+${Math.round(150 * multiplier) + (elapsed <= 5000 ? 50 : 0)}점`, {
+      `STAGE CLEAR\n+${Math.round(150 * multiplier) + (this.quizElapsed <= 5000 ? 50 : 0)}점`, {
         fontFamily: "Arial, sans-serif",
         fontSize: "28px",
         fontStyle: "bold",

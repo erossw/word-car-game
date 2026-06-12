@@ -16,7 +16,13 @@ class Car extends Phaser.GameObjects.Text {
     this.body.setGravityY(1150);
 
     this.jumpVelocity = -500;
+    this.moveSpeed = 220;
     this.invulnerableUntil = 0;
+  }
+
+  move(direction) {
+    this.body.setVelocityX(direction * this.moveSpeed);
+    if (direction !== 0) this.setFlipX(direction < 0);
   }
 
   jump() {

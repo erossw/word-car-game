@@ -31,7 +31,7 @@ class MenuScene extends Phaser.Scene {
       });
     });
 
-    this.add.text(400, 236, "Space / ↑ / 화면 탭으로 점프", {
+    this.add.text(400, 236, "Space / ↑ 점프 · ← → / A D 앞뒤 이동", {
       fontFamily: "Arial, sans-serif",
       fontSize: "17px",
       color: "#fef3c7",

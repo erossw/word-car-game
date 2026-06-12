@@ -1,7 +1,7 @@
 # 기술 아키텍처
 ## Word Car Game
 
-**버전**: 1.1
+**버전**: 1.2
 **작성일**: 2026-06-12
 
 ---
@@ -61,7 +61,7 @@ Boot → Menu → Game ──[아이템 수집]──→ Quiz (일시정지)
 
 | 파일 | 클래스 | 역할 |
 |------|--------|------|
-| `src/objects/Car.js` | `Car` | 플레이어: 점프 물리, 충돌, 1.5초 무적 처리 |
+| `src/objects/Car.js` | `Car` | 플레이어: 점프/앞뒤 이동 물리, 충돌, 1.5초 무적 처리 |
 | `src/objects/Obstacle.js` | `ObstacleSpawner` | 장애물 생성/재활용 (오브젝트 풀링) |
 | `src/objects/WordItem.js` | `WordItem` | 단어 아이템 생성, 수집 감지, 퀴즈 트리거 |
 
@@ -132,7 +132,7 @@ class WordManager {
   stage: 1,
   gradeLevel: 1,          // WordManager에 전달할 학년
   scrollSpeed: 200,       // px/초
-  obstacleInterval: 3000, // 장애물 생성 간격 (ms)
+  obstacleInterval: 1000, // 장애물 생성 간격 (ms), 최소 600ms
   targetDistance: 500,    // 스테이지 클리어 거리 (px)
   bgTheme: "day"          // "day" | "evening" | "night" | "space"
 }
@@ -157,18 +157,36 @@ class WordManager {
 
 ## 5. 게임 루프 (GameScene 내부)
 
+### 스테이지 2-페이즈 흐름
+
 ```
-update() 호출마다:
+[페이즈 1: 0% → 45%]
+  달리기 + 장애물 피하기 (ObstacleSpawner 계속 활성)
+  거리 45% 도달 → WordItem(별) 스폰 → 플레이어가 수집
+    → Phaser 일시정지 → QuizScene 표시 (15초)
+      → 정답 (quizPassed = true) : 게임 재개, 페이즈 2 진입
+      → 오답                     : 목숨 -1, 정답 표시 후 재개 (quizPassed = false)
+
+[페이즈 2: 45% → 100%]  (quizPassed = true 일 때만)
+  계속 달리기 + 장애물 피하기
+  거리 100% 도달 → completeStage() → 다음 스테이지
+```
+
+### update() 호출마다
+
+```
   1. 배경 스크롤 이동
-  2. Car 상태 업데이트 (중력 적용, 위치 계산)
-  3. ObstacleSpawner 틱 (장애물 생성/이동/재활용)
+  2. Car 상태 업데이트 (중력 적용, 위치 계산, 방향에 따라 이모지 좌우 반전)
+  3. ObstacleSpawner 틱 (장애물 생성/이동/재활용 — 페이즈 내내 중단 없이 활성)
   4. WordItem 상태 업데이트 (반짝임 애니메이션)
   5. 충돌 감지
-     - Car vs Obstacle → 목숨 감소, 무적 시간 시작
-     - Car vs WordItem → 수집, QuizScene 트리거
-  6. 거리 누적 + 점수 증가
-  7. HUD 업데이트 (점수, 목숨, 거리 게이지)
-  8. 목숨 0 체크 → ScoreScene 전환
+     - Car vs Obstacle → 목숨 감소, 1.5초 무적 시작
+     - Car vs WordItem → 수집, Phaser 일시정지, QuizScene 트리거
+  6. 거리 누적 (scrollSpeed × delta / 1000) + 점수 증가 (+1점 / 10px)
+  7. HUD 업데이트 (점수/콤보, 목숨, 노란색 거리 게이지)
+  8. 거리 45% 도달 체크 → WordItem 스폰 (미수집 상태일 때 1회)
+  9. quizPassed && 거리 100% 도달 체크 → completeStage()
+ 10. 목숨 0 체크 → ScoreScene 전환
 ```
 
 ---
@@ -233,7 +251,7 @@ word-car-game/
 - **오브젝트 풀링**: 장애물은 화면 밖으로 나가면 삭제하지 않고 재활용
 - **이모지 렌더링**: Phaser Text 오브젝트 재사용, 생성/파괴 최소화
 - **스케일링**: `Phaser.Scale.FIT` 모드로 모든 화면 크기 대응
-- **모바일**: 터치 입력은 `Phaser.Input.Touch` 이용
+- **모바일**: 화면 탭 점프와 좌우 가상 버튼 지원
 
 ---
 
@@ -268,8 +286,10 @@ const distractors = window.wordManager.getDistractors(wordData, stageConfig.grad
 | 이벤트 | 점수 |
 |--------|------|
 | 이동 거리 | +1점 / 10px |
-| 스테이지 클리어 | +50점 |
-| 퀴즈 정답 | +100점 |
+| 스테이지 클리어 (퀴즈 정답 포함) | +150점 × 콤보 배율 |
 | 빠른 정답 (5초 이내) | +50점 추가 |
 | 연속 정답 2회 | ×1.5 배율 |
 | 연속 정답 3회+ | ×2.0 배율 (최대) |
+
+> 퀴즈 정답 점수와 스테이지 클리어 점수는 분리되지 않고 `completeStage()`에서 `150 × multiplier`로 한번에 지급됩니다.
+> 오답 시에는 목숨만 감소하며 스테이지 클리어 점수가 없습니다.

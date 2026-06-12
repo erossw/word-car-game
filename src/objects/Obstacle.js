@@ -20,15 +20,13 @@ class ObstacleSpawner {
 
   reset(interval) {
     this.elapsed = 0;
-    this.nextInterval = interval * Phaser.Math.FloatBetween(0.75, 1.05);
+    this.nextInterval = interval;
     this.pool.forEach(obstacle => this.release(obstacle));
   }
 
   update(delta, speed, interval, enabled = true) {
     this.pool.forEach(obstacle => {
       if (!obstacle.active) return;
-      obstacle.x -= speed * delta / 1000;
-      obstacle.body.updateFromGameObject();
       if (obstacle.x < -100) this.release(obstacle);
     });
 
@@ -36,7 +34,7 @@ class ObstacleSpawner {
     this.elapsed += delta;
     if (this.elapsed >= this.nextInterval) {
       this.elapsed = 0;
-      this.nextInterval = interval * Phaser.Math.FloatBetween(0.82, 1.18);
+      this.nextInterval = interval;
       this.spawn();
     }
   }
@@ -69,9 +67,11 @@ class ObstacleSpawner {
       Math.max(0, obstacle.height - type.height),
     );
     obstacle.body.updateFromGameObject();
+    obstacle.body.setVelocityX(-this.scene.stageConfig.scrollSpeed);
   }
 
   release(obstacle) {
+    if (obstacle.body) obstacle.body.setVelocityX(0);
     obstacle.setActive(false).setVisible(false);
     if (obstacle.body) obstacle.body.enable = false;
   }

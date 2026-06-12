@@ -9,21 +9,23 @@ class WordItem extends Phaser.GameObjects.Text {
     scene.physics.add.existing(this);
     this.setOrigin(0.5).setDepth(7);
     this.body.setAllowGravity(false);
-    this.body.setSize(40, 40);
+    this.body.setSize(60, 90);
     this.groundY = groundY;
+    this.spawnY = groundY - 55;
     this.collected = false;
     this.spawned = false;
     this.setActive(false).setVisible(false);
     this.body.enable = false;
   }
 
-  spawn() {
+  spawn(speed) {
     this.spawned = true;
     this.collected = false;
-    this.setPosition(850, this.groundY - 78);
+    this.setPosition(850, this.spawnY);
     this.setActive(true).setVisible(true);
     this.body.enable = true;
     this.body.updateFromGameObject();
+    this.body.setVelocityX(-speed);
     this.scene.tweens.add({
       targets: this,
       scale: 1.22,
@@ -34,14 +36,13 @@ class WordItem extends Phaser.GameObjects.Text {
     });
   }
 
-  update(delta, speed) {
+  update(speed) {
     if (!this.active) return;
-    this.x -= speed * delta / 1000;
-    this.body.updateFromGameObject();
 
     if (this.x < -60 && !this.collected) {
-      this.setPosition(850, this.groundY - 78);
+      this.setPosition(850, this.spawnY);
       this.body.updateFromGameObject();
+      this.body.setVelocityX(-speed);
     }
   }
 
@@ -49,6 +50,7 @@ class WordItem extends Phaser.GameObjects.Text {
     if (!this.active || this.collected) return false;
     this.collected = true;
     this.scene.tweens.killTweensOf(this);
+    this.body.setVelocityX(0);
     this.setActive(false).setVisible(false);
     this.body.enable = false;
     return true;
@@ -58,6 +60,7 @@ class WordItem extends Phaser.GameObjects.Text {
     this.scene.tweens.killTweensOf(this);
     this.spawned = false;
     this.collected = false;
+    this.body.setVelocityX(0);
     this.setScale(1).setAngle(0);
     this.setActive(false).setVisible(false);
     this.body.enable = false;
