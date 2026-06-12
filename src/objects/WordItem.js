@@ -9,9 +9,9 @@ class WordItem extends Phaser.GameObjects.Text {
     scene.physics.add.existing(this);
     this.setOrigin(0.5).setDepth(7);
     this.body.setAllowGravity(false);
-    this.body.setSize(60, 90);
+    this.body.setSize(52, 52);
     this.groundY = groundY;
-    this.spawnY = groundY - 55;
+    this.spawnY = groundY - 25;
     this.collected = false;
     this.spawned = false;
     this.setActive(false).setVisible(false);
