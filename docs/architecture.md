@@ -1,21 +1,21 @@
 # 기술 아키텍처
 ## Word Car Game
 
-**버전**: 1.0  
-**작성일**: 2026-06-11
+**버전**: 1.1
+**작성일**: 2026-06-12
 
 ---
 
 ## 1. 기술 스택
 
-| 레이어 | 기술 | 버전 | 이유 |
-|--------|------|------|------|
-| 게임 엔진 | Phaser 3 | 3.x (CDN) | 물리/충돌/씬 관리 내장, 빌드 불필요 |
-| 렌더링 | HTML5 Canvas | 브라우저 내장 | Phaser 기반 |
-| 이모지 렌더링 | Phaser Text 오브젝트 | - | Canvas 위에 이모지 자연스럽게 출력 |
-| 퀴즈 UI | HTML DOM + CSS | - | Canvas 위 오버레이, 접근성 유리 |
-| 점수 저장 | localStorage | 브라우저 내장 | 백엔드 없이 영속적 데이터 저장 |
-| 빌드 도구 | 없음 | - | index.html CDN 직접 로드 |
+| 레이어 | 기술 | 이유 |
+|--------|------|------|
+| 게임 엔진 | Phaser 3 (CDN) | 물리/충돌/씬 관리 내장, 빌드 불필요 |
+| 렌더링 | HTML5 Canvas | Phaser 기반 |
+| 이모지 렌더링 | Phaser Text 오브젝트 | Canvas 위 이모지 자연스럽게 출력 |
+| 퀴즈 UI | HTML DOM + CSS | Canvas 위 오버레이, 접근성/스타일링 유리 |
+| 점수 저장 | localStorage | 백엔드 없이 영속적 데이터 저장 |
+| 빌드 도구 | 없음 | index.html CDN 직접 로드 |
 
 ---
 
@@ -23,10 +23,10 @@
 
 ```
 Phaser.Game
-├── BootScene       로딩/초기화
-├── MenuScene       메인 메뉴
+├── BootScene       씬 초기화 및 에셋 로딩
+├── MenuScene       메인 메뉴 + 하이스코어 진입
 ├── GameScene       핵심 게임 루프 (메인)
-│   └── [이벤트] → QuizScene (오버레이 팝업)
+│   └── [이벤트] → QuizScene (DOM 오버레이)
 └── ScoreScene      게임 오버 + 점수 등록 + 하이스코어
 ```
 
@@ -34,13 +34,13 @@ Phaser.Game
 
 ```
 Boot → Menu → Game ──[아이템 수집]──→ Quiz (일시정지)
-                 ↑                        │
-                 │   [정답/오답 처리]      │
-                 └────────────────────────┘
-                 │
-              [게임 오버]
-                 ↓
-              Score → Menu
+                ↑                         │
+                │    [정답/오답 처리]      │
+                └─────────────────────────┘
+                │
+             [게임 오버]
+                ↓
+             Score → Menu
 ```
 
 ---
@@ -51,17 +51,17 @@ Boot → Menu → Game ──[아이템 수집]──→ Quiz (일시정지)
 
 | 파일 | 역할 |
 |------|------|
-| `src/scenes/BootScene.js` | Phaser 에셋 로드, 씬 이니셜라이저 |
+| `src/scenes/BootScene.js` | Phaser 에셋 로드 (`window.wordManager`는 words.js 로드 시 자동 생성) |
 | `src/scenes/MenuScene.js` | 시작 버튼, 하이스코어 버튼, 타이틀 |
-| `src/scenes/GameScene.js` | 게임 루프: 스크롤, 충돌, HUD, 스테이지 |
-| `src/scenes/QuizScene.js` | DOM 오버레이 제어, 타이머, 정오답 이벤트 |
+| `src/scenes/GameScene.js` | 게임 루프: 스크롤, 충돌, HUD, 스테이지 관리 |
+| `src/scenes/QuizScene.js` | DOM 오버레이 제어, 15초 타이머, 정오답 이벤트 |
 | `src/scenes/ScoreScene.js` | 결과 표시, 이름 입력, localStorage 저장 |
 
 ### 3.2 게임 오브젝트
 
 | 파일 | 클래스 | 역할 |
 |------|--------|------|
-| `src/objects/Car.js` | `Car` | 플레이어: 점프, 충돌, 무적 처리 |
+| `src/objects/Car.js` | `Car` | 플레이어: 점프 물리, 충돌, 1.5초 무적 처리 |
 | `src/objects/Obstacle.js` | `ObstacleSpawner` | 장애물 생성/재활용 (오브젝트 풀링) |
 | `src/objects/WordItem.js` | `WordItem` | 단어 아이템 생성, 수집 감지, 퀴즈 트리거 |
 
@@ -69,8 +69,8 @@ Boot → Menu → Game ──[아이템 수집]──→ Quiz (일시정지)
 
 | 파일 | 내용 |
 |------|------|
-| `src/data/words.js` | 학년별 단어 배열. 각 단어: `{ word, hint, emoji, distractors[] }` |
-| `src/data/stages.js` | 스테이지별 설정: `{ speed, obstacleFreq, gradeLevel, bgTheme, targetDistance }` |
+| `src/data/words.js` | 801개 단어 + `WordManager` 클래스 (셔플 덱 방식) |
+| `src/data/stages.js` | 스테이지별 설정: `{ speed, obstacleInterval, gradeLevel, bgTheme, targetDistance }` |
 
 ---
 
@@ -79,41 +79,76 @@ Boot → Menu → Game ──[아이템 수집]──→ Quiz (일시정지)
 ### 4.1 단어 데이터 (`words.js`)
 
 ```js
-// 예시 구조 (단어 1개)
+// 단어 항목 포맷
 {
-  word: "cat",           // 정답 단어
-  hint: "a small furry animal that says 'meow'",  // 영어 정의
-  emoji: "🐱",           // 힌트 이모지
-  distractors: ["dog", "bird", "fish"],  // 오답 선택지 3개
-  grade: 1               // 학년 수준 (1~6)
+  word: "cat",
+  emoji: "🐱",
+  hint: "a small furry animal that says 'meow'",
+  grade: 1
 }
 ```
 
-### 4.2 스테이지 데이터 (`stages.js`)
+**총 801개, 학년별 수량:**
+
+| 학년 | 단어 수 | 주요 카테고리 |
+|------|--------|------------|
+| 1 | 140개 | 동물, 색깔, 신체, 사물, 날씨, 기본 동사, 의류, 도형 |
+| 2 | 149개 | 음식, 집안용품, 장소, 가족, 계절, 동사 확장 |
+| 3 | 141개 | 학교/과목, 스포츠, 교통, 직업, 감정, 형용사 확장 |
+| 4 | 149개 | 자연, 환경, 일상생활, 동사/부사 확장, 추상 명사 |
+| 5 | 96개 | 추상어, 사회, 과학 기초 |
+| 6 | 126개 | 과학 심화, 사회/문화, 고급 동사, 수학/통계 용어 |
+
+distractors(오답 선택지 3개)는 저장하지 않고 `WordManager.getDistractors()`가 동적으로 생성합니다.
+
+### 4.2 WordManager 클래스
+
+**위치**: `src/data/words.js` 하단 — `<script src="src/data/words.js">` 로드 시 즉시 `window.wordManager = new WordManager()` 실행 (BootScene과 무관)
 
 ```js
-// 예시 구조 (스테이지 1개)
+class WordManager {
+  init()                              // 학년별 셔플 덱 초기화 (게임 시작 시 1회)
+  getWord(gradeLevel)                 // 다음 단어 반환, 덱 소진 시 재셔플
+  getDistractors(correctWord, grade)  // 오답 3개 반환 (정답 제외 무작위)
+  getTotalCount()                     // 전체 단어 수 반환
+}
+```
+
+**출제 보장 원리:**
+- 스테이지 진입 시 `getWord(gradeLevel)` 1회 호출
+- 덱 포인터가 호출마다 1씩 증가 → **덱 소진 전까지 중복 없이 출제**
+- 세션 내 모든 단어 소진 후 재셔플, 직전 마지막 단어와 연속 중복 방지 처리 포함
+
+| 시나리오 | 동작 |
+|---------|------|
+| 스테이지 1 첫 플레이 | `getWord(1)` → 셔플 덱[0] |
+| 스테이지 1 재시작 | `getWord(1)` → 셔플 덱[1] (포인터 이미 증가) |
+| 세션 내 동일 학년 전체 소진 | 재셔플 후 덱[0]부터 |
+
+### 4.3 스테이지 데이터 (`stages.js`)
+
+```js
 {
   stage: 1,
-  gradeLevel: 1,           // 단어 학년 수준
-  scrollSpeed: 200,        // 픽셀/초
-  obstacleInterval: 3000,  // 장애물 생성 간격 (ms)
-  targetDistance: 500,     // 스테이지 클리어 거리 (px)
-  bgTheme: "day"           // 배경 테마
+  gradeLevel: 1,          // WordManager에 전달할 학년
+  scrollSpeed: 200,       // px/초
+  obstacleInterval: 3000, // 장애물 생성 간격 (ms)
+  targetDistance: 500,    // 스테이지 클리어 거리 (px)
+  bgTheme: "day"          // "day" | "evening" | "night" | "space"
 }
 ```
 
-### 4.3 점수 저장 스키마 (localStorage)
+### 4.4 점수 저장 스키마 (localStorage)
 
 ```js
-// localStorage 키: "wordCarGame_scores"
-// 값: JSON 배열 (최대 10개)
+// 키: "wordCarGame_scores"
+// 값: JSON 배열 최대 10개
 [
   {
-    name: "PLAYER1",        // 플레이어 이름 (최대 10자)
-    score: 2450,            // 최종 점수
-    stage: 5,               // 도달 스테이지
-    date: "2026-06-11"      // 게임 날짜 (YYYY-MM-DD)
+    name: "PLAYER1",      // 플레이어 이름 (최대 10자)
+    score: 2450,          // 최종 점수
+    stage: 5,             // 도달 스테이지
+    date: "2026-06-12"    // 게임 날짜 (YYYY-MM-DD)
   }
 ]
 ```
@@ -143,21 +178,22 @@ update() 호출마다:
 퀴즈는 Phaser 씬이 아닌 **HTML DOM 오버레이**로 구현합니다.
 
 이유:
-- 버튼, 텍스트, 타이머 바 등 CSS로 쉽게 스타일링 가능
-- 접근성 (키보드 탐색, 스크린리더) 지원
+- 버튼, 텍스트, 타이머 바를 CSS로 쉽게 스타일링
+- 키보드 탐색, 접근성 지원
 - Phaser 캔버스와 독립적으로 동작
 
 흐름:
 ```
 WordItem 수집
-  → GameScene.pauseGame()       // Phaser 타임스케일 0
-  → QuizScene.showQuiz(word)    // DOM 오버레이 표시
+  → GameScene.pauseGame()         // Phaser 타임스케일 0
+  → QuizScene.showQuiz(wordData)  // DOM 오버레이 표시
     → 타이머 시작 (15초)
-    → 플레이어 선택
-      → 정답: onCorrect()
-      → 오답: onWrong()
-  → QuizScene.hideQuiz()        // DOM 오버레이 숨김
-  → GameScene.resumeGame()      // Phaser 타임스케일 1
+    → 4개 선택지 렌더링 (정답 + getDistractors() 결과 섞기)
+    → 플레이어 선택 or 시간 초과
+      → 정답: onCorrect() → +100점, 스테이지 클리어
+      → 오답: onWrong()  → 목숨 -1, 정답 표시
+  → QuizScene.hideQuiz()          // DOM 오버레이 숨김
+  → GameScene.resumeGame()        // Phaser 타임스케일 1
 ```
 
 ---
@@ -182,12 +218,12 @@ word-car-game/
 │   │   ├── Obstacle.js
 │   │   └── WordItem.js
 │   └── data/
-│       ├── words.js
+│       ├── words.js        # WORDS_BY_GRADE 객체 + WordManager 클래스
 │       └── stages.js
 └── docs/
     ├── GDD.md
     ├── architecture.md     # (이 파일)
-    └── word-list.md
+    └── word-list.md        # 설계 참고용 단어 목록
 ```
 
 ---
@@ -201,11 +237,39 @@ word-car-game/
 
 ---
 
-## 9. 확장 가능성 (미래 고려)
+## 9. Codex 구현 가이드
 
-| 기능 | 방법 |
-|------|------|
-| 단어 DB 추가 | `words.js`에 배열 항목만 추가 |
-| 새 장애물 타입 | `Obstacle.js`의 타입 enum 확장 |
-| 멀티플레이 | WebSocket 서버 추가 (현재 스코프 외) |
-| 백엔드 점수 저장 | localStorage → API 교체 |
+Codex가 코드를 작성할 때 참고할 핵심 계약:
+
+### words.js → GameScene 인터페이스
+
+```js
+// GameScene 진입 시 (스테이지 시작마다 1회)
+const wordData = window.wordManager.getWord(stageConfig.gradeLevel);
+// wordData: { word: string, emoji: string, hint: string, grade: number }
+
+// QuizScene에 전달할 오답 3개
+const distractors = window.wordManager.getDistractors(wordData, stageConfig.gradeLevel);
+// distractors: [string, string, string]
+```
+
+### QuizScene DOM 요소 ID (index.html과 연동)
+
+```
+#quiz-overlay    퀴즈 전체 컨테이너 (display: none ↔ flex)
+#quiz-emoji      이모지 힌트 표시 영역
+#quiz-hint       영어 정의 텍스트 영역
+#quiz-timer-bar  타이머 진행 바 (CSS width % 애니메이션)
+#quiz-choices    4개 버튼 컨테이너
+```
+
+### 점수 계산 규칙
+
+| 이벤트 | 점수 |
+|--------|------|
+| 이동 거리 | +1점 / 10px |
+| 스테이지 클리어 | +50점 |
+| 퀴즈 정답 | +100점 |
+| 빠른 정답 (5초 이내) | +50점 추가 |
+| 연속 정답 2회 | ×1.5 배율 |
+| 연속 정답 3회+ | ×2.0 배율 (최대) |
